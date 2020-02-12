@@ -1,0 +1,19 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: master
+
+jobs:
+  cmake_build:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+        
+    - name: Check CMake Version
+      run: cmake -version
+    - name: Build project
+      run: |
+        mkdir build && cd build
+        cmake -DCMAKE_INSTALL_PREFIX=$PWD ..
+        make -j8
