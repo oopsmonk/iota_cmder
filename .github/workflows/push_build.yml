@@ -4,6 +4,10 @@ on:
   push:
     branches: master
 
+env:
+    BAZELISK_VERSION: 1.3.0
+    USE_BAZEL_VERSION: 2.1.0
+
 jobs:
   cmake_build:
     runs-on: ubuntu-18.04
@@ -12,8 +16,21 @@ jobs:
         
     - name: Check CMake Version
       run: cmake -version
-    - name: Build project
+    - name: CMake Build
       run: |
         mkdir build && cd build
         cmake -DCMAKE_INSTALL_PREFIX=$PWD ..
         make -j8
+
+  bazel_build:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install Bazel
+      run: |
+        wget https://github.com/bazelbuild/bazelisk/releases/download/v${BAZELISK_VERSION}/bazelisk-linux-amd64
+        chmod +x ./bazelisk-linux-amd64
+        ./bazelisk-linux-amd64 --version
+      
+    - name: Bazel Build
+      run: ./bazelisk-linux-amd64 build iota_cmder
