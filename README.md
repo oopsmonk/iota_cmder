@@ -34,3 +34,39 @@ cd iota_cmder
 USE_BAZEL_VERSION=2.1.0 bazelisk run iota_cmder
 ```
 
+### Client Configurations  
+
+You can config client by:
+* node_info_set: a node you want to use
+* client_conf_set: set MWW, depth, security level
+* seed_set: set the SEED (optional, please make sure you understand the risk before sending a value tx)  
+* help: list commands
+
+Default SEED is "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"  
+
+```bash
+# setup node url and port
+IOTA> node_info_set nodes.thetangle.org 443 1
+nodes.thetangle.org, port 443, https 1
+
+# setup mwm, depth, security level
+IOTA> client_conf_set 14 3 2
+Set: MWM 14, Depth 3, Security 2
+
+# check your node configuration
+IOTA> node_info
+appName IRI 
+appVersion 1.8.4 
+latestMilestone: RSVYL9SZJLFM99DDVCNSASYYBT9ASEETP9BTAEFVTVVLHQUMXHNOSIZMVWORQRVRRVSUMQBTKGXRA9999
+latestMilestoneIndex 1341705 
+latestSolidSubtangleMilestone: RSVYL9SZJLFM99DDVCNSASYYBT9ASEETP9BTAEFVTVVLHQUMXHNOSIZMVWORQRVRRVSUMQBTKGXRA9999
+latestSolidSubtangleMilestoneIndex 1341705 
+neighbors 24 
+packetsQueueSize 0 
+time 1581669480289 
+tips 5790 
+transactionsToRequest 0 
+features: RemotePOW, snapshotPruning, loadBalancer, 
+coordinatorAddress: EQSAUZXULTTYZCLNJNTXQTQHOMOFZERHTCGTXOLTVAHKSA9OGAZDEKECURBRIXIJWNPFCQIOVFVVXJVD9
+Client Configuration: MWM 14, Depth 3, Security 2
+```
