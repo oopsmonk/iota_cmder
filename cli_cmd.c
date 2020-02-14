@@ -695,6 +695,145 @@ static void cmd_register_get_balance() {
   utarray_push_back(cli_ctx.cmd_array, &get_balance_cmd);
 }
 
+//==========SEND==========
+static struct {
+  struct arg_str *receiver;
+  struct arg_str *value;
+  struct arg_str *tag;
+  struct arg_str *remainder;
+  struct arg_str *message;
+  struct arg_end *end;
+} send_args;
+
+static int fn_send(int argc, char **argv) {
+  retcode_t ret_code = RC_OK;
+  bool has_remainder = false;
+  flex_trit_t seed[NUM_FLEX_TRITS_ADDRESS];
+
+  int nerrors = arg_parse(argc, argv, (void **)&send_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, send_args.end, argv[0]);
+    return CLI_ERR_CMD_PARSING;
+  }
+
+  // check parameters
+  char const *receiver = send_args.receiver->sval[0];
+  if (!is_address((tryte_t const *const)receiver)) {
+    printf("Invalid receiver address!\n");
+    return CLI_ERR_INVALID_ARG;
+  }
+  char const *remainder = send_args.remainder->sval[0];
+  if (strlen(remainder)) {
+    if (!is_address((tryte_t const *const)remainder)) {
+      printf("Invalid remainder address!\n");
+      return CLI_ERR_INVALID_ARG;
+    }
+    has_remainder = true;
+  }
+
+  char const *msg = send_args.message->sval[0];
+  char *endptr = NULL;
+  int64_t value = strtoll(send_args.value->sval[0], &endptr, 10);
+
+  char padded_tag[NUM_TRYTES_TAG + 1];
+  char *tag = (char *)send_args.tag->sval[0];
+  size_t tag_size = strlen(tag);
+  to_uppercase(tag, tag_size);
+  if (tag_size < NUM_TRYTES_TAG) {
+    for (size_t i = 0; i < NUM_TRYTES_TAG; i++) {
+      if (i < tag_size)
+        padded_tag[i] = tag[i];
+      else
+        padded_tag[i] = '9';
+    }
+  }
+  padded_tag[NUM_TRYTES_TAG] = '\0';
+
+  if (!is_tag((tryte_t const *const)padded_tag)) {
+    printf("Invalid tag!\n");
+    return CLI_ERR_INVALID_ARG;
+  }
+
+  printf("sending %" PRId64 " to %s\n", value, receiver);
+  printf("security %d, depth %d, MWM %d, tag [%s]\n", cli_ctx.security, cli_ctx.depth, cli_ctx.mwm,
+         strlen(tag) ? padded_tag : "empty");
+  printf("remainder [%s]\n", strlen(remainder) ? remainder : "empty");
+  printf("message [%s]\n", strlen(msg) ? msg : "empty");
+
+  bundle_transactions_t *bundle = NULL;
+  bundle_transactions_new(&bundle);
+  transfer_array_t *transfers = transfer_array_new();
+
+  /* transfer setup */
+  transfer_t tf = {};
+  // seed
+  if (has_remainder) {
+    if (flex_trits_from_trytes(seed, NUM_TRITS_ADDRESS, (tryte_t const *)CLIENT_CONFIG_SEED, NUM_TRYTES_ADDRESS,
+                               NUM_TRYTES_ADDRESS) == 0) {
+      printf("seed flex_trits convertion failed\n");
+      goto done;
+    }
+  }
+
+  // receiver
+  if (flex_trits_from_trytes(tf.address, NUM_TRITS_ADDRESS, (tryte_t const *)receiver, NUM_TRYTES_ADDRESS,
+                             NUM_TRYTES_ADDRESS) == 0) {
+    printf("address flex_trits convertion failed\n");
+    goto done;
+  }
+
+  // tag
+  printf("tag: %s\n", padded_tag);
+  if (flex_trits_from_trytes(tf.tag, NUM_TRITS_TAG, (tryte_t const *)padded_tag, NUM_TRYTES_TAG, NUM_TRYTES_TAG) == 0) {
+    printf("tag flex_trits convertion failed\n");
+    goto done;
+  }
+
+  // value
+  tf.value = value;
+
+  // message (optional)
+  transfer_message_set_string(&tf, msg);
+
+  transfer_array_add(transfers, &tf);
+
+  ret_code = iota_client_send_transfer(cli_ctx.iota_client, has_remainder ? seed : NULL, cli_ctx.security,
+                                       cli_ctx.depth, cli_ctx.mwm, false, transfers, NULL, NULL, NULL, bundle);
+
+  printf("send transaction: %s\n", error_2_string(ret_code));
+  if (ret_code == RC_OK) {
+    flex_trit_t const *bundle_hash = bundle_transactions_bundle_hash(bundle);
+    printf("bundle hash: ");
+    flex_trit_print(bundle_hash, NUM_TRITS_HASH);
+    printf("\n");
+  }
+
+done:
+  bundle_transactions_free(&bundle);
+  transfer_message_free(&tf);
+  transfer_array_free(transfers);
+
+  return CLI_OK;
+}
+
+static void cmd_register_send() {
+  send_args.receiver = arg_str1(NULL, NULL, "<RECEIVER>", "A receiver address");
+  send_args.value = arg_str0("v", "value", "<VALUE>", "A token value");
+  send_args.remainder = arg_str0("r", "remainder", "<REMAINDER>", "A remainder address");
+  send_args.message = arg_str0("m", "message", "<MESSAGE>", "a message for this transaction");
+  send_args.tag = arg_str0("t", "tag", "<TAG>", "A tag for this transaction");
+  send_args.end = arg_end(20);
+
+  cli_cmd_t send_cmd = {
+      .command = "send",
+      .help = "send value or data to the Tangle.\n\tex: send [RECEIVER_ADDRESS] -v=100",
+      .hint = " <receiver> -v <value> -m <message> -t <tag>",
+      .func = &fn_send,
+      .argtable = &send_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &send_cmd);
+}
+
 //==========END OF COMMANDS==========
 
 cli_err_t cli_command_init() {
@@ -733,6 +872,7 @@ cli_err_t cli_command_init() {
   cmd_register_account_data();
   cmd_register_get_transactions();
   cmd_register_get_balance();
+  cmd_register_send();
 
   return iota_client_init();
 }
