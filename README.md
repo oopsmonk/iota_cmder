@@ -18,9 +18,19 @@ make -j8 && ./iota_cmder
 
 ### Bazel  
 
+[Use Bazel](https://docs.bazel.build/versions/master/install.html)  
+
 ```bash
 git clone https://github.com/oopsmonk/iota_cmder.git
 cd iota_cmder
 bazel run iota_cmder
+```
+
+[Use bazelisk](https://github.com/bazelbuild/bazelisk)  
+
+```bash
+git clone https://github.com/oopsmonk/iota_cmder.git
+cd iota_cmder
+USE_BAZEL_VERSION=2.1.0 bazelisk run iota_cmder
 ```
 
