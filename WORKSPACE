@@ -10,7 +10,7 @@ git_repository(
 
 git_repository(
     name = "org_iota_client",
-    commit = "d632a84272dab322e9fbcbe71a5e6ac7e8168900",
+    commit = "e260967bd3a9088fa03d20c1517930e23f1de591",
     remote = "https://github.com/iotaledger/iota.c.git",
 )
 
