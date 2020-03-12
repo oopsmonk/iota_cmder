@@ -1,12 +1,14 @@
 #include <ctype.h>
 #include <inttypes.h>
 #include <stdio.h>
+#include <time.h>
 
 #include "argtable3.h"
 #include "cli_cmd.h"
 
 #include "cclient/api/core/core_api.h"
 #include "cclient/api/extended/extended_api.h"
+#include "common/helpers/sign.h"
 #include "utils/input_validators.h"
 #include "utils/macros.h"
 
@@ -405,7 +407,7 @@ static cli_err_t fn_seed_set(int argc, char **argv) {
     return CLI_ERR_INVALID_ARG;
   }
 
-  strcpy(cli_ctx.seed, seed);
+  strncpy(cli_ctx.seed, seed, NUM_TRYTES_HASH);
 
   return CLI_OK;
 }
@@ -734,6 +736,10 @@ static int fn_send(int argc, char **argv) {
   char const *msg = send_args.message->sval[0];
   char *endptr = NULL;
   int64_t value = strtoll(send_args.value->sval[0], &endptr, 10);
+  if (endptr == send_args.value->sval[0]) {
+    printf("No digits were found in value\n");
+    return CLI_ERR_INVALID_ARG;
+  }
 
   char padded_tag[NUM_TRYTES_TAG + 1];
   char *tag = (char *)send_args.tag->sval[0];
@@ -834,6 +840,109 @@ static void cmd_register_send() {
   utarray_push_back(cli_ctx.cmd_array, &send_cmd);
 }
 
+//==========GEN_HASH==========
+tryte_t const tryte_chars[27] = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
+                                 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '9'};
+
+static struct {
+  struct arg_int *len;
+  struct arg_end *end;
+} gen_hash_args;
+
+static cli_err_t fn_gen_hash(int argc, char **argv) {
+  int nerrors = arg_parse(argc, argv, (void **)&gen_hash_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, gen_hash_args.end, argv[0]);
+    return CLI_ERR_INVALID_ARG;
+  }
+
+  int len = gen_hash_args.len->ival[0];
+  char *hash = (char *)malloc(sizeof(char) * (len + 1));
+  if (hash == NULL) {
+    printf("Out of Memory\n");
+    return CLI_ERR_OOM;
+  }
+
+  srand(time(0));
+  for (int i = 0; i < len; i++) {
+    memset(hash + i, tryte_chars[rand() % 27], 1);
+  }
+  hash[len] = '\0';
+
+  printf("Hash: %s\n", hash);
+  free(hash);
+  return CLI_OK;
+}
+
+static void cmd_register_gen_hash() {
+  gen_hash_args.len = arg_int1(NULL, NULL, "<lenght>", "a length for the hash");
+  gen_hash_args.end = arg_end(2);
+  cli_cmd_t cmd = {
+      .command = "gen_hash",
+      .help = "Genrating a hash with the given length.\n  `gen_hash 81` for a random SEED",
+      .hint = " <length>",
+      .func = &fn_gen_hash,
+      .argtable = &gen_hash_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &cmd);
+}
+
+//==========GET_ADDRESSES==========
+static struct {
+  struct arg_str *start_idx;
+  struct arg_str *end_idx;
+  struct arg_end *end;
+} get_addresses_args;
+
+static cli_err_t fn_get_addresses(int argc, char **argv) {
+  int nerrors = arg_parse(argc, argv, (void **)&get_addresses_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, get_addresses_args.end, argv[0]);
+    return CLI_ERR_INVALID_ARG;
+  }
+
+  char *endptr = NULL;
+  uint64_t start_index = strtoll(get_addresses_args.start_idx->sval[0], &endptr, 10);
+  if (endptr == get_addresses_args.start_idx->sval[0]) {
+    printf("No digits were found in start index\n");
+    return CLI_ERR_INVALID_ARG;
+  }
+  uint64_t end_index = strtoll(get_addresses_args.end_idx->sval[0], &endptr, 10);
+  if (endptr == get_addresses_args.end_idx->sval[0]) {
+    printf("No digits were found in end index\n");
+    return CLI_ERR_INVALID_ARG;
+  }
+  if (end_index < start_index) {
+    printf("end index[%" PRIu64 "] should bigger or equal to start index[%" PRIu64 "]\n", start_index, end_index);
+    return CLI_ERR_INVALID_ARG;
+  }
+
+  printf("Security level: %d\n", cli_ctx.security);
+  // printf("get address %"PRId64" , %"PRId64"\n", start_index, end_index);
+  while (start_index <= end_index) {
+    char *addr = iota_sign_address_gen_trytes(cli_ctx.seed, start_index, cli_ctx.security);
+    printf("[%" PRIu64 "] %s\n", start_index, addr);
+    free(addr);
+    start_index++;
+  }
+
+  return CLI_OK;
+}
+
+static void cmd_register_get_addresses() {
+  get_addresses_args.start_idx = arg_str1(NULL, NULL, "<start>", "start index");
+  get_addresses_args.end_idx = arg_str1(NULL, NULL, "<end>", "end index");
+  get_addresses_args.end = arg_end(2);
+  cli_cmd_t cmd = {
+      .command = "get_addresses",
+      .help = "Gets addresses by index",
+      .hint = " <start> <end>",
+      .func = &fn_get_addresses,
+      .argtable = &get_addresses_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &cmd);
+}
+
 //==========END OF COMMANDS==========
 
 cli_err_t cli_command_init() {
@@ -873,6 +982,8 @@ cli_err_t cli_command_init() {
   cmd_register_get_transactions();
   cmd_register_get_balance();
   cmd_register_send();
+  cmd_register_gen_hash();
+  cmd_register_get_addresses();
 
   return iota_client_init();
 }

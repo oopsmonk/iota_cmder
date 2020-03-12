@@ -31,7 +31,7 @@ bazel run iota_cmder
 ```bash
 git clone https://github.com/oopsmonk/iota_cmder.git
 cd iota_cmder
-USE_BAZEL_VERSION=2.1.0 bazelisk run iota_cmder
+bazelisk run iota_cmder
 ```
 
 ### Client Configurations  
