@@ -190,25 +190,26 @@ static cli_err_t fn_node_info(int argc, char **argv) {
   }
 
   if ((ret = iota_client_get_node_info(cli_ctx.iota_client, node_res)) == RC_OK) {
-    printf("appName %s \n", get_node_info_res_app_name(node_res));
-    printf("appVersion %s \n", get_node_info_res_app_version(node_res));
+    printf("appName: %s \n", get_node_info_res_app_name(node_res));
+    printf("appVersion: %s \n", get_node_info_res_app_version(node_res));
 
     printf("latestMilestone: ");
     flex_trit_print(node_res->latest_milestone, NUM_TRITS_HASH);
     printf("\n");
 
-    printf("latestMilestoneIndex %u \n", node_res->latest_milestone_index);
+    printf("latestMilestoneIndex: %u \n", node_res->latest_milestone_index);
 
     printf("latestSolidSubtangleMilestone: ");
     flex_trit_print(node_res->latest_solid_subtangle_milestone, NUM_TRITS_HASH);
     printf("\n");
 
-    printf("latestSolidSubtangleMilestoneIndex %u \n", node_res->latest_solid_subtangle_milestone_index);
-    printf("neighbors %d \n", node_res->neighbors);
-    printf("packetsQueueSize %d \n", node_res->packets_queue_size);
-    printf("time %" PRIu64 " \n", node_res->time);
-    printf("tips %d \n", node_res->tips);
-    printf("transactionsToRequest %d \n", node_res->transactions_to_request);
+    printf("latestSolidSubtangleMilestoneIndex: %u \n", node_res->latest_solid_subtangle_milestone_index);
+    printf("neighbors: %d \n", node_res->neighbors);
+    printf("packetsQueueSize: %d \n", node_res->packets_queue_size);
+    printf("time: %" PRIu64 " \n", node_res->time);
+    printf("tips: %d \n", node_res->tips);
+    printf("transactionsToRequest: %d \n", node_res->transactions_to_request);
+    printf("isSynced: %s \n", node_res->is_synced ? "true" : "false");
 
     // print out features
     printf("features: ");
@@ -943,6 +944,64 @@ static void cmd_register_get_addresses() {
   utarray_push_back(cli_ctx.cmd_array, &cmd);
 }
 
+//==========GET BUNDLE==========
+static struct {
+  struct arg_str *tail;
+  struct arg_end *end;
+} get_bundle_args;
+
+static int fn_get_bundle(int argc, char **argv) {
+  retcode_t ret_code = RC_OK;
+  flex_trit_t tmp_tail[FLEX_TRIT_SIZE_243];
+  bundle_status_t bundle_status = BUNDLE_NOT_INITIALIZED;
+  bundle_transactions_t *bundle = NULL;
+
+  int nerrors = arg_parse(argc, argv, (void **)&get_bundle_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, get_bundle_args.end, argv[0]);
+    return CLI_ERR_CMD_PARSING;
+  }
+
+  tryte_t const *tail_ptr = (tryte_t *)get_bundle_args.tail->sval[0];
+  if (!is_address(tail_ptr)) {
+    printf("Invalid address\n");
+    return CLI_ERR_INVALID_ARG;
+  }
+
+  bundle_transactions_new(&bundle);
+  if (flex_trits_from_trytes(tmp_tail, NUM_TRITS_HASH, tail_ptr, NUM_TRYTES_HASH, NUM_TRYTES_HASH) == 0) {
+    printf("Error: converting flex_trit failed.\n");
+    ret_code = CLI_ERR_FAILED;
+  } else {
+    if ((ret_code = iota_client_get_bundle(cli_ctx.iota_client, tmp_tail, bundle, &bundle_status)) == RC_OK) {
+      if (bundle_status == BUNDLE_VALID) {
+        printf("bundle status: %d\n", bundle_status);
+        bundle_dump(bundle);
+      } else {
+        printf("Invalid bundle: %d\n", bundle_status);
+      }
+    } else {
+      printf("Error: %s\n", error_2_string(ret_code));
+    }
+  }
+
+  bundle_transactions_free(&bundle);
+  return ret_code;
+}
+
+static void cmd_register_get_bundle() {
+  get_bundle_args.tail = arg_strn(NULL, NULL, "<tail>", 1, 10, "A tail hash");
+  get_bundle_args.end = arg_end(4);
+  cli_cmd_t get_bundle_cmd = {
+      .command = "get_bundle",
+      .help = "Gets associated transactions from a tail hash",
+      .hint = " <tail>",
+      .func = &fn_get_bundle,
+      .argtable = &get_bundle_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &get_bundle_cmd);
+}
+
 //==========END OF COMMANDS==========
 
 cli_err_t cli_command_init() {
@@ -984,6 +1043,7 @@ cli_err_t cli_command_init() {
   cmd_register_send();
   cmd_register_gen_hash();
   cmd_register_get_addresses();
+  cmd_register_get_bundle();
 
   return iota_client_init();
 }

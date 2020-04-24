@@ -12,7 +12,7 @@ include(FetchContent)
 FetchContent_Declare(
   iota.c
   GIT_REPOSITORY http://github.com/iotaledger/iota.c.git
-  GIT_TAG e260967bd3a9088fa03d20c1517930e23f1de591
+  GIT_TAG 959c1e20e7bc8660a736c9db7042264e1e79854f
 )
 
 if(${CMAKE_VERSION} VERSION_LESS 3.14)
