@@ -4,13 +4,13 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 git_repository(
     name = "org_iota_common",
-    commit = "1b56a5282933fb674181001630e7b2e2c33b5eea",
+    commit = "cf649803757abf48432d4fa60e9f27ac119bae5f",
     remote = "https://github.com/iotaledger/iota_common.git",
 )
 
 git_repository(
     name = "org_iota_client",
-    commit = "959c1e20e7bc8660a736c9db7042264e1e79854f",
+    commit = "b0564c029942aee006d2c0d20e2663af234d5397",
     remote = "https://github.com/iotaledger/iota.c.git",
 )
 

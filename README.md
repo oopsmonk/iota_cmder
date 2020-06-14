@@ -4,6 +4,22 @@ A terminal-based application for interacting with the Tangle through [iota.c](ht
 
 It is inspired by [IOTA ESP32 Wallet](https://github.com/oopsmonk/iota_esp32_wallet)  
 
+## Commands  
+
+* `help`: Show support commands.
+* `node_info`: Display node info.
+* `node_info_set`: Set iota node endpoint.
+* `client_config`: Display MWM, Depth, and Security Level.
+* `client_config_set`: Set MWM, Depth, Security Level.
+* `seed`: Display wallet seed.
+* `seed_set`: Set wallet seed.
+* `account`: Display addresses, balances, and unused address.
+* `transactions`: Find transactions by tag, addresses, or bundles
+* `balance`: Get balance from addresses
+* `send`: Send transaction
+* `get_addresses`: Get addresses from given starting and ending index.
+* `get_bundle`: Get a bundle transaction from a given tail hash (transaction index equal to 0 in the bundle).
+
 ## How to Use  
 
 ### CMake  
