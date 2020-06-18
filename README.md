@@ -7,6 +7,7 @@ It is inspired by [IOTA ESP32 Wallet](https://github.com/oopsmonk/iota_esp32_wal
 ## Commands  
 
 * `help`: Show support commands.
+* `version`: Show version info.
 * `node_info`: Display node info.
 * `node_info_set`: Set iota node endpoint.
 * `client_config`: Display MWM, Depth, and Security Level.
@@ -19,6 +20,7 @@ It is inspired by [IOTA ESP32 Wallet](https://github.com/oopsmonk/iota_esp32_wal
 * `send`: Send transaction
 * `get_addresses`: Get addresses from given starting and ending index.
 * `get_bundle`: Get a bundle transaction from a given tail hash (transaction index equal to 0 in the bundle).
+* `reattach`: Reattaches a bundle transaction to the Tangle.
 
 ## How to Use  
 

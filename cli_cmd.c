@@ -12,6 +12,14 @@
 #include "utils/input_validators.h"
 #include "utils/macros.h"
 
+#define CMDER_VERSION_MAJOR 0
+#define CMDER_VERSION_MINOR 0
+#define CMDER_VERSION_MICRO 1
+
+#define CMDER_VERSION          \
+  VER_STR(CMDER_VERSION_MAJOR) \
+  "." VER_STR(CMDER_VERSION_MINOR) "." VER_STR(CMDER_VERSION_MICRO)
+
 typedef struct {
   uint32_t depth;                     /*!< number of bundles to go back to determine the transactions for approval. */
   uint8_t mwm;                        /*!< Minimum Weight Magnitude for doing Proof-of-Work */
@@ -61,8 +69,8 @@ static cli_err_t iota_client_init() {
   // init logger
   logger_helper_init(LOGGER_DEBUG);
   logger_init_client_core(LOGGER_DEBUG);
-  logger_init_client_extended(LOGGER_DEBUG);
-  logger_init_json_serializer(LOGGER_ERR);
+  logger_init_client_extended(LOGGER_WARNING);
+  logger_init_json_serializer(LOGGER_WARNING);
 #endif
   printf("init endpoint: %s:%u %s\n", cli_ctx.iota_client->http.host, cli_ctx.iota_client->http.port,
          cli_ctx.iota_client->http.ca_pem ? "with TLS" : "");
@@ -171,6 +179,29 @@ static void cmd_register_help() {
       .help = "Show this help",
       .hint = NULL,
       .func = &fn_help,
+      .argtable = NULL,
+  };
+
+  utarray_push_back(cli_ctx.cmd_array, &cmd);
+}
+
+//==========NODE_INFO==========
+static cli_err_t fn_version(int argc, char **argv) {
+  UNUSED(argc);
+  UNUSED(argv);
+  cli_cmd_t *cmd_p = NULL;
+
+  printf("IOTA_COMMON_VERSION: %s, IOTA_CLIENT_VERSION: %s\n", IOTA_COMMON_VERSION, CCLIENT_VERSION);
+  printf("APP_VERSION: %s\n", CMDER_VERSION);
+  return CLI_OK;
+}
+
+static void cmd_register_version() {
+  cli_cmd_t cmd = {
+      .command = "version",
+      .help = "Show version info",
+      .hint = NULL,
+      .func = &fn_version,
       .argtable = NULL,
   };
 
@@ -963,8 +994,8 @@ static int fn_get_bundle(int argc, char **argv) {
   }
 
   tryte_t const *tail_ptr = (tryte_t *)get_bundle_args.tail->sval[0];
-  if (!is_address(tail_ptr)) {
-    printf("Invalid address\n");
+  if (!is_trytes(tail_ptr, NUM_TRYTES_HASH)) {
+    printf("Invalid hash\n");
     return CLI_ERR_INVALID_ARG;
   }
 
@@ -990,7 +1021,7 @@ static int fn_get_bundle(int argc, char **argv) {
 }
 
 static void cmd_register_get_bundle() {
-  get_bundle_args.tail = arg_strn(NULL, NULL, "<tail>", 1, 10, "A tail hash");
+  get_bundle_args.tail = arg_str1(NULL, NULL, "<tail>", "A tail hash");
   get_bundle_args.end = arg_end(4);
   cli_cmd_t get_bundle_cmd = {
       .command = "get_bundle",
@@ -1000,6 +1031,62 @@ static void cmd_register_get_bundle() {
       .argtable = &get_bundle_args,
   };
   utarray_push_back(cli_ctx.cmd_array, &get_bundle_cmd);
+}
+
+//==========REATTACH==========
+static struct {
+  struct arg_str *tail;
+  struct arg_end *end;
+} reattach_args;
+
+static int fn_reattach(int argc, char **argv) {
+  retcode_t ret_code = RC_OK;
+  flex_trit_t tmp_tail[FLEX_TRIT_SIZE_243];
+  bundle_transactions_t *bundle = NULL;
+
+  int nerrors = arg_parse(argc, argv, (void **)&reattach_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, reattach_args.end, argv[0]);
+    return CLI_ERR_CMD_PARSING;
+  }
+
+  tryte_t const *tail_ptr = (tryte_t *)reattach_args.tail->sval[0];
+  if (!is_trytes(tail_ptr, NUM_TRYTES_HASH)) {
+    printf("Invalid hash\n");
+    return CLI_ERR_INVALID_ARG;
+  }
+
+  bundle_transactions_new(&bundle);
+  if (flex_trits_from_trytes(tmp_tail, NUM_TRITS_HASH, tail_ptr, NUM_TRYTES_HASH, NUM_TRYTES_HASH) == 0) {
+    printf("Error: converting flex_trit failed.\n");
+    ret_code = CLI_ERR_FAILED;
+  } else {
+    if ((ret_code = iota_client_replay_bundle(cli_ctx.iota_client, tmp_tail, cli_ctx.depth, cli_ctx.mwm, NULL,
+                                              bundle)) == RC_OK) {
+      printf("reattach succeeded\n");
+      printf("Bundle hash: ");
+      flex_trit_print(bundle_transactions_bundle_hash(bundle), NUM_TRITS_HASH);
+      printf("\n");
+    } else {
+      printf("Error: %s\n", error_2_string(ret_code));
+    }
+  }
+
+  bundle_transactions_free(&bundle);
+  return ret_code;
+}
+
+static void cmd_register_reattach() {
+  reattach_args.tail = arg_str1(NULL, NULL, "<tail>", "A tail transaction hash");
+  reattach_args.end = arg_end(4);
+  cli_cmd_t reattach_cmd = {
+      .command = "reattach",
+      .help = "Reattaches a bundle transaction to the Tangle",
+      .hint = " <tail>",
+      .func = &fn_reattach,
+      .argtable = &reattach_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &reattach_cmd);
 }
 
 //==========END OF COMMANDS==========
@@ -1031,6 +1118,7 @@ cli_err_t cli_command_init() {
 
   // registing commands
   cmd_register_help();
+  cmd_register_version();
   cmd_register_node_info();
   cmd_register_node_info_set();
   cmd_register_client_conf();
@@ -1044,6 +1132,7 @@ cli_err_t cli_command_init() {
   cmd_register_gen_hash();
   cmd_register_get_addresses();
   cmd_register_get_bundle();
+  cmd_register_reattach();
 
   return iota_client_init();
 }
