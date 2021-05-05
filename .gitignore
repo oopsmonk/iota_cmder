@@ -1,4 +1,2 @@
-# Bazel
-bazel-*
-user.bazelrc
-
+build/*
+.vscode/*

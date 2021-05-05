@@ -1,15 +1,16 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "cli_cmd.h"
-#include "utils/macros.h"
 
 int main(int argc, char **argv) {
-  UNUSED(argc);
-  UNUSED(argv);
   char *line = NULL;
 
-  cli_command_init();
+  if (cli_command_init() != 0) {
+    printf("iota cmder init failed\n");
+    return -1;
+  }
 
   // Enable multiline mode
   linenoiseSetMultiLine(1);

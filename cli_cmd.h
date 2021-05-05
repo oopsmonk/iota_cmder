@@ -1,6 +1,9 @@
 #ifndef __CLI_CMD_H__
 #define __CLI_CMD_H__
 
+#include <stdint.h>
+#include <stdlib.h>
+
 #include "cli_config.h"
 #include "linenoise.h"
 
