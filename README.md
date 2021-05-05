@@ -1,5 +1,7 @@
 # IOTA Commander  
 
+![github actions](https://github.com/oopsmonk/iota_cmder/actions/workflows/push_build.yml/badge.svg)
+
 A terminal-based application for interacting with the Tangle through [iota.c](https://github.com/iotaledger/iota.c). It is designed to run on PCs and embedded devices that POSIX compliant.  
 
 It is inspired by [IOTA ESP32 Wallet](https://github.com/oopsmonk/iota_esp32_wallet)  

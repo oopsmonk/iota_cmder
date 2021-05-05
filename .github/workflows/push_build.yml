@@ -1,4 +1,4 @@
-name: C/C++ CI
+name: build/test
 
 on:
   push:
@@ -9,13 +9,19 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v2
-        
+
+    - name: install requirements
+      run: |
+        sudo apt update
+        sudo apt install -y cppcheck ninja-build libcurl4-openssl-dev clang-format build-essential
+
     - name: Check CMake Version
       run: cmake -version
+
     - name: CMake Build
       run: |
         mkdir build && cd build
-        cmake -DCMAKE_INSTALL_PREFIX=$PWD ..
+        cmake -DCMAKE_INSTALL_PREFIX=$PWD -DIOTA_TESTS=ON ..
         make -j8
         make test
 
@@ -23,12 +29,18 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v2
-        
+
+    - name: install requirements
+      run: |
+        sudo apt update
+        sudo apt install -y cppcheck ninja-build libcurl4-openssl-dev clang-format build-essential
+
     - name: Check CMake Version
       run: cmake -version
+
     - name: CMake Build
       run: |
         mkdir build && cd build
-        cmake -DCMAKE_INSTALL_PREFIX=$PWD -DUSE_REF_CRYPTO=ON ..
+        cmake -DCMAKE_INSTALL_PREFIX=$PWD -DIOTA_TESTS=ON -DUSE_REF_CRYPTO=ON ..
         make -j8
         make test
