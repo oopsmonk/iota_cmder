@@ -46,8 +46,45 @@ static char const *amazon_ca1_pem =
     "rqXRfboQnoZsG4q5WTP468SQvvG5\r\n"
     "-----END CERTIFICATE-----\r\n";
 
+static int update_node_config(iota_wallet_t *w, char const host[], uint32_t port, bool tls) {
+  // set connected node
+  if (wallet_set_endpoint(w, host, port, tls) != 0) {
+    printf("set endpoint failed\n");
+    return -1;
+  }
+
+  // get node info and update HRP prefix
+  res_node_info_t *info = res_node_info_new();
+  if (info == NULL) {
+    return -2;
+  }
+
+  cli_err_t ret = get_node_info(&w->endpoint, info);
+  if (ret != 0) {
+    printf("get_node_info API failed: %s:%d, TSL: %s\n", w->endpoint.host, w->endpoint.port,
+           w->endpoint.use_tls ? "true" : "false");
+  } else {
+    printf("Connected to %s:%d, TSL: %s\n", w->endpoint.host, w->endpoint.port, w->endpoint.use_tls ? "true" : "false");
+    if (info->is_error) {
+      printf("Node response: \n%s\n", info->u.error->msg);
+      ret = -3;
+    } else {
+      printf("\tName: %s\n", info->u.output_node_info->name);
+      printf("\tVersion: %s\n", info->u.output_node_info->version);
+      printf("\tisHealthy: %s\n", info->u.output_node_info->is_healthy ? "true" : "false");
+      printf("\tNetwork ID: %s\n", info->u.output_node_info->network_id);
+      printf("\tbech32HRP: %s\n", info->u.output_node_info->bech32hrp);
+      strncpy(w->bech32HRP, info->u.output_node_info->bech32hrp, sizeof(w->bech32HRP));
+    }
+  }
+
+  res_node_info_free(info);
+  return ret;
+}
+
 static cli_err_t cli_wallet_init() {
   byte_t seed[IOTA_SEED_BYTES] = {};
+  printf("Init client application...\n");
 
   if (strncmp(WALLET_CONFIG_SEED, "RANDOM", strlen("RANDOM")) == 0) {
     printf("Use random a SEED\n");
@@ -71,12 +108,13 @@ static cli_err_t cli_wallet_init() {
     return CLI_ERR_FAILED;
   }
 
-  if (wallet_set_endpoint(cli_ctx.wallet, CLIENT_CONFIG_NODE, CLIENT_CONFIG_PORT, NODE_USE_TLS) != 0) {
-    printf("set endpoint failed\n");
+  if (update_node_config(cli_ctx.wallet, CLIENT_CONFIG_NODE, CLIENT_CONFIG_PORT, NODE_USE_TLS) != 0) {
+    printf("connect to node failed\n");
     wallet_destroy(cli_ctx.wallet);
     cli_ctx.wallet = NULL;
     return CLI_ERR_FAILED;
   }
+  printf("Init client application...done\n");
   return CLI_OK;
 }
 
@@ -239,19 +277,35 @@ static void cmd_register_node_info() {
 
 //==========NODE_INFO_SET==========
 static struct {
-  struct arg_str *url;
+  struct arg_str *host;
   struct arg_int *port;
   struct arg_int *is_https;
   struct arg_end *end;
 } node_set_args;
 
 static cli_err_t fn_node_set(int argc, char **argv) {
-  printf("TODO\n");
+  int nerrors = arg_parse(argc, argv, (void **)&node_set_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, node_set_args.end, argv[0]);
+    return CLI_ERR_INVALID_ARG;
+  }
+
+  // create a new wallet config
+  iota_wallet_t w = {};
+  memcpy(&w, cli_ctx.wallet, sizeof(iota_wallet_t));
+
+  if (update_node_config(&w, node_set_args.host->sval[0], node_set_args.port->ival[0],
+                         node_set_args.is_https->ival[0]) == 0) {
+    // update wallet config
+    memcpy(cli_ctx.wallet, &w, sizeof(iota_wallet_t));
+  } else {
+    printf("Node config is not updated.\n");
+  }
   return CLI_OK;
 }
 
 static void cmd_register_node_set() {
-  node_set_args.url = arg_str1(NULL, NULL, "<host>", "hostname");
+  node_set_args.host = arg_str1(NULL, NULL, "<host>", "hostname");
   node_set_args.port = arg_int1(NULL, NULL, "<port>", "port number");
   node_set_args.is_https = arg_int1(NULL, NULL, "<is_https>", "0 or 1");
   node_set_args.end = arg_end(5);
@@ -259,7 +313,7 @@ static void cmd_register_node_set() {
   cli_cmd_t cmd = {
       .command = "node_set",
       .help = "Set connected node",
-      .hint = " <url> <port> <is_https (0|1)> ",
+      .hint = " <host> <port> <is_https (0|1)> ",
       .func = &fn_node_set,
       .argtable = &node_set_args,
   };
@@ -269,7 +323,8 @@ static void cmd_register_node_set() {
 
 //==========CLIENT_CONF==========
 static cli_err_t fn_node_conf(int argc, char **argv) {
-  printf("TODO\n");
+  printf("%s:%d, TLS: %s\n", cli_ctx.wallet->endpoint.host, cli_ctx.wallet->endpoint.port,
+         cli_ctx.wallet->endpoint.use_tls ? "true" : "false");
   return CLI_OK;
 }
 
