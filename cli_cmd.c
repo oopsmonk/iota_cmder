@@ -7,9 +7,11 @@
 
 #include "argtable3.h"
 #include "cli_cmd.h"
+#include "utarray.h"
+
+#include "client/api/v1/find_message.h"
 #include "client/api/v1/get_node_info.h"
 #include "core/utils/byte_buffer.h"
-#include "utarray.h"
 #include "wallet/wallet.h"
 
 #define CMDER_VERSION_MAJOR 0
@@ -323,8 +325,9 @@ static void cmd_register_node_set() {
 
 //==========CLIENT_CONF==========
 static cli_err_t fn_node_conf(int argc, char **argv) {
-  printf("%s:%d, TLS: %s\n", cli_ctx.wallet->endpoint.host, cli_ctx.wallet->endpoint.port,
+  printf("Host: %s:%d, TLS: %s\n", cli_ctx.wallet->endpoint.host, cli_ctx.wallet->endpoint.port,
          cli_ctx.wallet->endpoint.use_tls ? "true" : "false");
+  printf("HRP: %s\n", cli_ctx.wallet->bech32HRP);
   return CLI_OK;
 }
 
@@ -406,6 +409,57 @@ static void cmd_register_get_addresses() {
   utarray_push_back(cli_ctx.cmd_array, &cmd);
 }
 
+//=====Find Message by Index=========
+static struct {
+  struct arg_str *index;
+  struct arg_end *end;
+} api_find_msg_index_args;
+
+static cli_err_t fn_api_find_msg_index(int argc, char **argv) {
+  int nerrors = arg_parse(argc, argv, (void **)&api_find_msg_index_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, api_find_msg_index_args.end, argv[0]);
+    return -1;
+  }
+
+  res_find_msg_t *res = res_find_msg_new();
+  if (!res) {
+    printf("new res_find_msg_t failed\n");
+    return -2;
+  }
+
+  int err = find_message_by_index(&cli_ctx.wallet->endpoint, api_find_msg_index_args.index->sval[0], res);
+  if (err) {
+    printf("find message API failed\n");
+  } else {
+    if (res->is_error) {
+      printf("%s\n", res->u.error->msg);
+    } else {
+      size_t count = res_find_msg_get_id_len(res);
+      for (size_t i = 0; i < count; i++) {
+        printf("%s\n", res_find_msg_get_id(res, i));
+      }
+      printf("message ID count %zu\n", count);
+    }
+  }
+
+  res_find_msg_free(res);
+  return err;
+}
+
+static void register_api_find_msg_index() {
+  api_find_msg_index_args.index = arg_str1(NULL, NULL, "<index>", "Index string");
+  api_find_msg_index_args.end = arg_end(2);
+  cli_cmd_t cmd = {
+      .command = "api_msg_index",
+      .help = "Find messages from a given index",
+      .hint = " <index>",
+      .func = &fn_api_find_msg_index,
+      .argtable = &api_find_msg_index_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &cmd);
+}
+
 //==========END OF COMMANDS==========
 
 cli_err_t cli_command_init() {
@@ -431,6 +485,7 @@ cli_err_t cli_command_init() {
 
   // client APIs
   cmd_register_node_info();
+  register_api_find_msg_index();
 
   // wallet APIs
   cmd_register_seed();
