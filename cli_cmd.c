@@ -48,23 +48,30 @@ static char const *amazon_ca1_pem =
 
 static cli_err_t cli_wallet_init() {
   byte_t seed[IOTA_SEED_BYTES] = {};
-  size_t str_seed_len = strlen(WALLET_CONFIG_SEED);
 
-  // TODO get seed from terminal if the seed is invalid.
-  if (str_seed_len != 64) {
-    printf("invalid seed length, it should be a 64-character-string\n");
-    return CLI_ERR_FAILED;
+  if (strncmp(WALLET_CONFIG_SEED, "RANDOM", strlen("RANDOM")) == 0) {
+    printf("Use random a SEED\n");
+    random_seed(seed);
+  } else {
+    size_t str_seed_len = strlen(WALLET_CONFIG_SEED);
+    // TODO get seed from terminal if the seed is invalid.
+    if (str_seed_len != 64) {
+      printf("invalid seed length, it should be a 64-character-string\n");
+      return CLI_ERR_FAILED;
+    }
+
+    if (hex_2_bin(WALLET_CONFIG_SEED, str_seed_len, seed, sizeof(seed)) != 0) {
+      printf("invalid seed\n");
+      return CLI_ERR_FAILED;
+    }
   }
 
-  if (hex2bin(WALLET_CONFIG_SEED, str_seed_len, seed, sizeof(seed)) != 0) {
-    printf("invalid seed\n");
-    return CLI_ERR_FAILED;
-  }
   if ((cli_ctx.wallet = wallet_create(seed, WALLET_CONFIG_PATH)) == NULL) {
     printf("create wallet instance failed\n");
     return CLI_ERR_FAILED;
   }
-  if (wallet_set_endpoint(cli_ctx.wallet, CLIENT_CONFIG_NODE, CLIENT_CONFIG_PORT) != 0) {
+
+  if (wallet_set_endpoint(cli_ctx.wallet, CLIENT_CONFIG_NODE, CLIENT_CONFIG_PORT, NODE_USE_TLS) != 0) {
     printf("set endpoint failed\n");
     wallet_destroy(cli_ctx.wallet);
     cli_ctx.wallet = NULL;
@@ -194,19 +201,25 @@ static cli_err_t fn_node_info(int argc, char **argv) {
   }
   cli_err_t ret = get_node_info(&cli_ctx.wallet->endpoint, info);
   if (ret != 0) {
-    if (info->is_error) {
-      printf("node_info error message: %s\n", info->u.error->msg);
-    }
+    printf("get_node_info failed\n");
   } else {
-    printf("name: %s\n", info->u.output_node_info->name);
-    printf("version: %s\n", info->u.output_node_info->version);
-    printf("isHealthy: %s\n", info->u.output_node_info->is_healthy ? "true" : "false");
-    printf("networkId: %s\n", info->u.output_node_info->network_id);
-    printf("bech32HRP: %s\n", info->u.output_node_info->bech32hrp);
-    printf("minPoWScore: %" PRIu64 "\n", info->u.output_node_info->min_pow_score);
-    printf("latestMilestoneIndex: %" PRIu64 "\n", info->u.output_node_info->latest_milestone_index);
-    printf("confirmedMilestoneIndex: %" PRIu64 "\n", info->u.output_node_info->confirmed_milestone_index);
-    printf("pruningIndex: %" PRIu64 "\n", info->u.output_node_info->pruning_milestone_index);
+    if (info->is_error) {
+      printf("Node response: \n%s\n", info->u.error->msg);
+    } else {
+      printf("Name: %s\n", info->u.output_node_info->name);
+      printf("Version: %s\n", info->u.output_node_info->version);
+      printf("isHealthy: %s\n", info->u.output_node_info->is_healthy ? "true" : "false");
+      printf("Network ID: %s\n", info->u.output_node_info->network_id);
+      printf("bech32HRP: %s\n", info->u.output_node_info->bech32hrp);
+      printf("minPoWScore: %" PRIu64 "\n", info->u.output_node_info->min_pow_score);
+      printf("Latest Milestone Index: %" PRIu64 "\n", info->u.output_node_info->latest_milestone_index);
+      printf("Latest Milestone Timestamp: %" PRIu64 "\n", info->u.output_node_info->latest_milestone_timestamp);
+      printf("Confirmed Milestone Index: %" PRIu64 "\n", info->u.output_node_info->confirmed_milestone_index);
+      printf("Pruning Index: %" PRIu64 "\n", info->u.output_node_info->pruning_milestone_index);
+      printf("MSP: %0.2f\n", info->u.output_node_info->msg_pre_sec);
+      printf("Referenced MPS: %0.2f\n", info->u.output_node_info->referenced_msg_pre_sec);
+      printf("Reference Rate: %0.2f%%\n", info->u.output_node_info->referenced_rate);
+    }
   }
 
   res_node_info_free(info);
