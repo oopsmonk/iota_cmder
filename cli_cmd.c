@@ -10,7 +10,14 @@
 #include "utarray.h"
 
 #include "client/api/v1/find_message.h"
+#include "client/api/v1/get_balance.h"
+#include "client/api/v1/get_message_children.h"
+#include "client/api/v1/get_message_metadata.h"
 #include "client/api/v1/get_node_info.h"
+#include "client/api/v1/get_output.h"
+#include "client/api/v1/get_outputs_from_address.h"
+#include "client/api/v1/get_tips.h"
+#include "client/api/v1/send_message.h"
 #include "core/utils/byte_buffer.h"
 #include "wallet/wallet.h"
 
@@ -89,7 +96,7 @@ static cli_err_t cli_wallet_init() {
   printf("Init client application...\n");
 
   if (strncmp(WALLET_CONFIG_SEED, "RANDOM", strlen("RANDOM")) == 0) {
-    printf("Use random a SEED\n");
+    printf("using a random SEED\n");
     random_seed(seed);
   } else {
     size_t str_seed_len = strlen(WALLET_CONFIG_SEED);
@@ -203,7 +210,7 @@ static cli_err_t fn_help(int argc, char **argv) {
   return CLI_OK;
 }
 
-static void cmd_register_help() {
+static void register_help() {
   cli_cmd_t cmd = {
       .command = "help",
       .help = "Show this help",
@@ -221,7 +228,7 @@ static cli_err_t fn_version(int argc, char **argv) {
   return CLI_OK;
 }
 
-static void cmd_register_version() {
+static void register_version() {
   cli_cmd_t cmd = {
       .command = "version",
       .help = "Show version info",
@@ -266,7 +273,7 @@ static cli_err_t fn_node_info(int argc, char **argv) {
   return ret;
 }
 
-static void cmd_register_node_info() {
+static void register_node_info() {
   cli_cmd_t cmd = {
       .command = "node_info",
       .help = "Shows node info",
@@ -306,7 +313,7 @@ static cli_err_t fn_node_set(int argc, char **argv) {
   return CLI_OK;
 }
 
-static void cmd_register_node_set() {
+static void register_node_set() {
   node_set_args.host = arg_str1(NULL, NULL, "<host>", "hostname");
   node_set_args.port = arg_int1(NULL, NULL, "<port>", "port number");
   node_set_args.is_https = arg_int1(NULL, NULL, "<is_https>", "0 or 1");
@@ -331,7 +338,7 @@ static cli_err_t fn_node_conf(int argc, char **argv) {
   return CLI_OK;
 }
 
-static void cmd_register_node_conf() {
+static void register_node_conf() {
   cli_cmd_t cmd = {
       .command = "node_conf",
       .help = "Show connected node configuration",
@@ -348,7 +355,7 @@ static cli_err_t fn_seed(int argc, char **argv) {
   return CLI_OK;
 }
 
-static void cmd_register_seed() {
+static void register_seed() {
   cli_cmd_t cmd = {
       .command = "seed",
       .help = "Show SEED",
@@ -370,7 +377,7 @@ static cli_err_t fn_seed_set(int argc, char **argv) {
   return CLI_OK;
 }
 
-static void cmd_register_seed_set() {
+static void register_seed_set() {
   seed_set_args.seed = arg_str1(NULL, NULL, "<seed>", "A 64-character-string");
   seed_set_args.end = arg_end(2);
   cli_cmd_t cmd = {
@@ -395,7 +402,7 @@ static cli_err_t fn_get_addresses(int argc, char **argv) {
   return CLI_OK;
 }
 
-static void cmd_register_get_addresses() {
+static void register_get_addresses() {
   get_addresses_args.start_idx = arg_str1(NULL, NULL, "<start>", "start index");
   get_addresses_args.count = arg_str1(NULL, NULL, "<count>", "number of addresses");
   get_addresses_args.end = arg_end(2);
@@ -460,6 +467,349 @@ static void register_api_find_msg_index() {
   utarray_push_back(cli_ctx.cmd_array, &cmd);
 }
 
+/* 'api_get_balance' command */
+static struct {
+  struct arg_str *addr;
+  struct arg_end *end;
+} api_get_balance_args;
+
+static int fn_api_get_balance(int argc, char **argv) {
+  char hex_addr[IOTA_ADDRESS_HEX_BYTES + 1] = {};
+  int nerrors = arg_parse(argc, argv, (void **)&api_get_balance_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, api_get_balance_args.end, argv[0]);
+    return -1;
+  }
+
+  char const *const bech32_add_str = api_get_balance_args.addr->sval[0];
+  if (strncmp(bech32_add_str, cli_ctx.wallet->bech32HRP, strlen(cli_ctx.wallet->bech32HRP)) != 0) {
+    printf("Invalid address hash\n");
+    return -2;
+  } else {
+    // bech32 address to hex string
+    if (address_bech32_to_hex(cli_ctx.wallet->bech32HRP, bech32_add_str, hex_addr, sizeof(hex_addr)) != 0) {
+      printf("Convert ed25519 address to hex string failed\n");
+      return -3;
+    }
+
+    // get balance from connected node
+    res_balance_t *res = res_balance_new();
+    if (!res) {
+      printf("Create res_balance_t object failed\n");
+      return -4;
+    } else {
+      nerrors = get_balance(&cli_ctx.wallet->endpoint, hex_addr, res);
+      if (nerrors != 0) {
+        printf("get_balance API failed\n");
+      } else {
+        if (res->is_error) {
+          printf("Err: %s\n", res->u.error->msg);
+        } else {
+          printf("balance: %" PRIu64 "\n", res->u.output_balance->balance);
+        }
+      }
+      res_balance_free(res);
+    }
+  }
+  return nerrors;
+}
+
+static void register_api_get_balance() {
+  api_get_balance_args.addr = arg_str1(NULL, NULL, "<address>", "Address HASH");
+  api_get_balance_args.end = arg_end(2);
+  cli_cmd_t cmd = {
+      .command = "api_get_balance",
+      .help = "Get balance from a given address",
+      .hint = " <address>",
+      .func = &fn_api_get_balance,
+      .argtable = &api_get_balance_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &cmd);
+}
+
+/* 'api_msg_children' command */
+static struct {
+  struct arg_str *msg_id;
+  struct arg_end *end;
+} api_msg_children_args;
+
+static int fn_api_msg_children(int argc, char **argv) {
+  int nerrors = arg_parse(argc, argv, (void **)&api_msg_children_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, api_msg_children_args.end, argv[0]);
+    return -1;
+  }
+
+  // check message id length
+  char const *const msg_id_str = api_msg_children_args.msg_id->sval[0];
+  if (strlen(msg_id_str) != IOTA_MESSAGE_ID_HEX_BYTES) {
+    printf("Invalid message ID length\n");
+    return -2;
+  }
+
+  res_msg_children_t *res = res_msg_children_new();
+  if (!res) {
+    printf("Allocate response failed\n");
+    return -3;
+  } else {
+    nerrors = get_message_children(&cli_ctx.wallet->endpoint, msg_id_str, res);
+    if (nerrors) {
+      printf("get_message_children error %d\n", nerrors);
+    } else {
+      if (res->is_error) {
+        printf("Err: %s\n", res->u.error->msg);
+      } else {
+        size_t count = res_msg_children_len(res);
+        if (count == 0) {
+          printf("Message not found\n");
+        } else {
+          for (size_t i = 0; i < count; i++) {
+            printf("%s\n", res_msg_children_get(res, i));
+          }
+        }
+      }
+    }
+    res_msg_children_free(res);
+  }
+
+  return nerrors;
+}
+
+static void register_api_msg_children() {
+  api_msg_children_args.msg_id = arg_str1(NULL, NULL, "<ID>", "Message ID");
+  api_msg_children_args.end = arg_end(2);
+  cli_cmd_t cmd = {
+      .command = "api_msg_children",
+      .help = "Get children from a given message ID",
+      .hint = " <ID>",
+      .func = &fn_api_msg_children,
+      .argtable = &api_msg_children_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &cmd);
+}
+
+/* 'api_msg_meta' command */
+static struct {
+  struct arg_str *msg_id;
+  struct arg_end *end;
+} api_msg_meta_args;
+
+static int fn_api_msg_meta(int argc, char **argv) {
+  int nerrors = arg_parse(argc, argv, (void **)&api_msg_meta_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, api_msg_meta_args.end, argv[0]);
+    return -1;
+  }
+
+  // check message id length
+  char const *const msg_id_str = api_msg_meta_args.msg_id->sval[0];
+  if (strlen(msg_id_str) != IOTA_MESSAGE_ID_HEX_BYTES) {
+    printf("Invalid message ID length\n");
+    return -2;
+  }
+
+  res_msg_meta_t *res = res_msg_meta_new();
+  if (!res) {
+    printf("Allocate response failed\n");
+    return -3;
+  } else {
+    nerrors = get_message_metadata(&cli_ctx.wallet->endpoint, msg_id_str, res);
+    if (nerrors) {
+      printf("get_message_metadata error %d\n", nerrors);
+    } else {
+      if (res->is_error) {
+        printf("%s\n", res->u.error->msg);
+      } else {
+        printf("Message ID: %s\nisSolid: %s\n", res->u.meta->msg_id, res->u.meta->is_solid ? "True" : "False");
+        size_t parents = res_msg_meta_parents_len(res);
+        printf("%zu parents:\n", parents);
+        for (size_t i = 0; i < parents; i++) {
+          printf("\t%s\n", res_msg_meta_parent_get(res, i));
+        }
+        printf("ledgerInclusionState: %s\n", res->u.meta->inclusion_state);
+
+        // check milestone index
+        if (res->u.meta->milestone_idx != 0) {
+          printf("milestoneIndex: %" PRIu64 "\n", res->u.meta->milestone_idx);
+        }
+
+        // check referenced milestone index
+        if (res->u.meta->referenced_milestone != 0) {
+          printf("referencedByMilestoneIndex: %" PRIu64 "\n", res->u.meta->referenced_milestone);
+        }
+
+        // check should promote
+        if (res->u.meta->should_promote >= 0) {
+          printf("shouldPromote: %s\n", res->u.meta->should_promote ? "True" : "False");
+        }
+        // check should reattach
+        if (res->u.meta->should_reattach >= 0) {
+          printf("shouldReattach: %s\n", res->u.meta->should_reattach ? "True" : "False");
+        }
+      }
+    }
+    res_msg_meta_free(res);
+  }
+  return nerrors;
+}
+
+static void register_api_msg_meta() {
+  api_msg_meta_args.msg_id = arg_str1(NULL, NULL, "<Message ID>", "Message ID");
+  api_msg_meta_args.end = arg_end(2);
+  cli_cmd_t cmd = {
+      .command = "api_msg_meta",
+      .help = "Get metadata from a given message ID",
+      .hint = " <Message ID>",
+      .func = &fn_api_msg_meta,
+      .argtable = &api_msg_meta_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &cmd);
+}
+
+/* 'api_address_outputs' command */
+static struct {
+  struct arg_str *addr;
+  struct arg_end *end;
+} api_address_outputs_args;
+
+static int fn_api_address_outputs(int argc, char **argv) {
+  char hex_addr[IOTA_ADDRESS_HEX_BYTES + 1] = {};
+  int nerrors = arg_parse(argc, argv, (void **)&api_address_outputs_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, api_address_outputs_args.end, argv[0]);
+    return -1;
+  }
+
+  // check address
+  char const *const bech32_add_str = api_address_outputs_args.addr->sval[0];
+  if (strncmp(bech32_add_str, cli_ctx.wallet->bech32HRP, strlen(cli_ctx.wallet->bech32HRP)) != 0) {
+    printf("Invalid address hash\n");
+    return -2;
+  }
+
+  // bech32 address to hex string
+  if (address_bech32_to_hex(cli_ctx.wallet->bech32HRP, bech32_add_str, hex_addr, sizeof(hex_addr)) != 0) {
+    printf("Convert address failed\n");
+    return -3;
+  }
+
+  res_outputs_address_t *res = res_outputs_address_new();
+  if (!res) {
+    printf("Allocate res_outputs_address_t failed\n");
+    return -4;
+  } else {
+    nerrors = get_outputs_from_address(&cli_ctx.wallet->endpoint, hex_addr, res);
+    if (nerrors != 0) {
+      printf("get_outputs_from_address error\n");
+    } else {
+      if (res->is_error) {
+        printf("%s\n", res->u.error->msg);
+      } else {
+        printf("Output IDs:\n");
+        for (uint32_t i = 0; i < res_outputs_address_output_id_count(res); i++) {
+          printf("%s\n", res_outputs_address_output_id(res, i));
+        }
+      }
+    }
+
+    res_outputs_address_free(res);
+  }
+
+  return nerrors;
+}
+
+static void register_api_address_outputs() {
+  api_address_outputs_args.addr = arg_str1(NULL, NULL, "<Address>", "Address hash");
+  api_address_outputs_args.end = arg_end(2);
+  cli_cmd_t cmd = {
+      .command = "api_address_outputs",
+      .help = "Get output ID list from a given address",
+      .hint = " <Address>",
+      .func = &fn_api_address_outputs,
+      .argtable = &api_address_outputs_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &cmd);
+}
+
+/* 'api_get_output' command */
+static struct {
+  struct arg_str *output_id;
+  struct arg_end *end;
+} api_get_output_args;
+
+static int fn_api_get_output(int argc, char **argv) {
+  int nerrors = arg_parse(argc, argv, (void **)&api_get_output_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, api_get_output_args.end, argv[0]);
+    return -1;
+  }
+
+  res_output_t res = {};
+  nerrors = get_output(&cli_ctx.wallet->endpoint, api_get_output_args.output_id->sval[0], &res);
+  if (nerrors != 0) {
+    printf("get_output error\n");
+    return -2;
+  } else {
+    if (res.is_error) {
+      printf("%s\n", res.u.error->msg);
+      res_err_free(res.u.error);
+    } else {
+      dump_output_response(&res);
+    }
+  }
+
+  return nerrors;
+}
+
+static void register_api_get_output() {
+  api_get_output_args.output_id = arg_str1(NULL, NULL, "<Output ID>", "An output ID");
+  api_get_output_args.end = arg_end(2);
+  cli_cmd_t cmd = {
+      .command = "api_get_output",
+      .help = "Get the output object from a given output ID",
+      .hint = " <Output ID>",
+      .func = &fn_api_get_output,
+      .argtable = &api_get_output_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &cmd);
+}
+
+/* 'api_tips' command */
+static int fn_api_tips(int argc, char **argv) {
+  int err = 0;
+  res_tips_t *res = res_tips_new();
+  if (!res) {
+    printf("Allocate tips object failed\n");
+    return -1;
+  }
+
+  err = get_tips(&cli_ctx.wallet->endpoint, res);
+  if (err != 0) {
+    printf("get_tips error\n");
+  } else {
+    if (res->is_error) {
+      printf("%s\n", res->u.error->msg);
+    } else {
+      for (size_t i = 0; i < get_tips_id_count(res); i++) {
+        printf("%s\n", get_tips_id(res, i));
+      }
+    }
+  }
+
+  res_tips_free(res);
+  return err;
+}
+
+static void register_api_tips() {
+  cli_cmd_t cmd = {
+      .command = "api_tips",
+      .help = "Get tips from connected node",
+      .hint = NULL,
+      .func = &fn_api_tips,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &cmd);
+}
+
 //==========END OF COMMANDS==========
 
 cli_err_t cli_command_init() {
@@ -476,21 +826,27 @@ cli_err_t cli_command_init() {
   }
 
   // registing commands
-  cmd_register_help();
-  cmd_register_version();
+  register_help();
+  register_version();
 
   // configuration
-  cmd_register_node_set();
-  cmd_register_node_conf();
+  register_node_set();
+  register_node_conf();
 
   // client APIs
-  cmd_register_node_info();
+  register_node_info();
   register_api_find_msg_index();
+  register_api_get_balance();
+  register_api_msg_children();
+  register_api_msg_meta();
+  register_api_address_outputs();
+  register_api_get_output();
+  register_api_tips();
 
   // wallet APIs
-  cmd_register_seed();
-  cmd_register_seed_set();
-  cmd_register_get_addresses();
+  register_seed();
+  register_seed_set();
+  register_get_addresses();
 
   return cli_wallet_init();
 }
