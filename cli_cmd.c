@@ -430,7 +430,7 @@ static cli_err_t fn_get_addresses(int argc, char **argv) {
   uint32_t start = (uint32_t)get_addresses_args.start_idx->dval[0];
   uint32_t count = (uint32_t)get_addresses_args.count->dval[0];
 
-  for (uint32_t i = 0; i < start + count; i++) {
+  for (uint32_t i = start; i < start + count; i++) {
     addr_with_version[0] = ADDRESS_VER_ED25519;
     nerrors = wallet_address_by_index(cli_ctx.wallet, i, addr_with_version + 1);
     if (nerrors != 0) {
@@ -857,6 +857,120 @@ static void register_api_tips() {
   utarray_push_back(cli_ctx.cmd_array, &cmd);
 }
 
+/* 'balance' command */
+static struct {
+  struct arg_dbl *idx_start;
+  struct arg_dbl *idx_count;
+  struct arg_end *end;
+} get_balance_args;
+
+static int fn_get_balance(int argc, char **argv) {
+  int nerrors = arg_parse(argc, argv, (void **)&get_balance_args);
+  uint64_t balance = 0;
+  if (nerrors != 0) {
+    arg_print_errors(stderr, get_balance_args.end, argv[0]);
+    return -1;
+  }
+
+  uint32_t start = get_balance_args.idx_start->dval[0];
+  uint32_t count = get_balance_args.idx_count->dval[0];
+
+  for (uint32_t i = start; i < start + count; i++) {
+    if (wallet_balance_by_index(cli_ctx.wallet, i, &balance) != 0) {
+      printf("Err: get balance failed on index %u\n", i);
+      return -2;
+    }
+    printf("balance on address [%" PRIu32 "]: %" PRIu64 "i\n", i, balance);
+  }
+  return 0;
+}
+
+static void register_get_balance() {
+  get_balance_args.idx_start = arg_dbl1(NULL, NULL, "<start>", "start index");
+  get_balance_args.idx_count = arg_dbl1(NULL, NULL, "<count>", "number of address");
+  get_balance_args.end = arg_end(2);
+  cli_cmd_t cmd = {
+      .command = "balance",
+      .help = "Get the balance from a range of address index",
+      .hint = " <start> <count>",
+      .func = &fn_get_balance,
+      .argtable = &get_balance_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &cmd);
+}
+
+/* 'send' command */
+static struct {
+  struct arg_dbl *sender;
+  struct arg_str *receiver;
+  struct arg_dbl *balance;
+  struct arg_end *end;
+} send_msg_args;
+
+static int fn_send_msg(int argc, char **argv) {
+  char msg_id[IOTA_MESSAGE_ID_HEX_BYTES + 1] = {};
+  char data[] = "sent from esp32 via iota.c";
+  int nerrors = arg_parse(argc, argv, (void **)&send_msg_args);
+  byte_t recv[IOTA_ADDRESS_BYTES] = {};
+  if (nerrors != 0) {
+    arg_print_errors(stderr, send_msg_args.end, argv[0]);
+    return -1;
+  }
+
+  char const *const recv_addr = send_msg_args.receiver->sval[0];
+  // validating receiver address
+  if (strncmp(recv_addr, cli_ctx.wallet->bech32HRP, strlen(cli_ctx.wallet->bech32HRP)) == 0) {
+    // convert bech32 address to binary
+    if ((nerrors = address_from_bech32(cli_ctx.wallet->bech32HRP, recv_addr, recv))) {
+      printf("invalid bech32 address\n");
+      return -2;
+    }
+  } else if (strlen(recv_addr) == IOTA_ADDRESS_HEX_BYTES) {
+    // convert ed25519 string to binary
+    if (hex_2_bin(recv_addr, strlen(recv_addr), recv + 1, ED25519_ADDRESS_BYTES) != 0) {
+      printf("invalid ed25519 address\n");
+      return -3;
+    }
+
+  } else {
+    printf("invalid receiver address\n");
+    return -4;
+  }
+
+  // balance = number * Mi
+  uint64_t balance = (uint64_t)send_msg_args.balance->dval[0] * 1000000;
+
+  if (balance > 0) {
+    printf("send %" PRIu64 "Mi to %s\n", (uint64_t)send_msg_args.balance->dval[0], recv_addr);
+  } else {
+    printf("send indexation payload to tangle\n");
+  }
+
+  nerrors = wallet_send(cli_ctx.wallet, (uint32_t)send_msg_args.sender->dval[0], recv + 1, balance, "ESP32 Wallet",
+                        (byte_t *)data, sizeof(data), msg_id, sizeof(msg_id));
+  if (nerrors) {
+    printf("send message failed\n");
+    return -5;
+  }
+  printf("Message Hash: %s\n", msg_id);
+  return nerrors;
+}
+
+static void register_send_tokens() {
+  send_msg_args.sender = arg_dbl1(NULL, NULL, "<index>", "Address index");
+  send_msg_args.receiver = arg_str1(NULL, NULL, "<receiver>", "Receiver address");
+  send_msg_args.balance = arg_dbl1(NULL, NULL, "<balance>", "balance");
+  send_msg_args.end = arg_end(20);
+  cli_cmd_t cmd = {
+      .command = "send",
+      .help = "send message to tangle",
+      .hint = " <addr_index> <receiver> <balance>",
+      .func = &fn_send_msg,
+      .argtable = &send_msg_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &cmd);
+}
+
 //==========END OF COMMANDS==========
 
 cli_err_t cli_command_init() {
@@ -894,6 +1008,8 @@ cli_err_t cli_command_init() {
   register_seed();
   register_seed_set();
   register_get_addresses();
+  register_get_balance();
+  register_send_tokens();
 
   return cli_wallet_init();
 }
