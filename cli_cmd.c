@@ -373,7 +373,29 @@ static struct {
 } seed_set_args;
 
 static cli_err_t fn_seed_set(int argc, char **argv) {
-  printf("TODO\n");
+  byte_t new_seed[IOTA_SEED_BYTES] = {};
+
+  int nerrors = arg_parse(argc, argv, (void **)&seed_set_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, seed_set_args.end, argv[0]);
+    return CLI_ERR_INVALID_ARG;
+  }
+
+  char const *const seed_in = seed_set_args.seed->sval[0];
+  size_t len = strlen(seed_in);
+  if (len != IOTA_SEED_HEX_BYTES) {
+    printf("SEED is a %d-character string, the input length is %zu\n", IOTA_SEED_HEX_BYTES, len);
+    return CLI_ERR_INVALID_ARG;
+  }
+
+  if (hex_2_bin(seed_in, len, new_seed, sizeof(new_seed)) == 0) {
+    // update seed
+    memcpy(cli_ctx.wallet->seed, new_seed, IOTA_SEED_BYTES);
+  } else {
+    printf("Convert hex string to binary failed\n");
+    return -1;
+  }
+
   return CLI_OK;
 }
 
@@ -392,23 +414,48 @@ static void register_seed_set() {
 
 //==========GET_ADDRESSES==========
 static struct {
-  struct arg_str *start_idx;
-  struct arg_str *count;
+  struct arg_dbl *start_idx;
+  struct arg_dbl *count;
   struct arg_end *end;
 } get_addresses_args;
 
 static cli_err_t fn_get_addresses(int argc, char **argv) {
-  printf("TODO\n");
+  byte_t addr_with_version[IOTA_ADDRESS_BYTES] = {};
+  char tmp_bech32_addr[100] = {};
+  int nerrors = arg_parse(argc, argv, (void **)&get_addresses_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, get_addresses_args.end, argv[0]);
+    return -1;
+  }
+  uint32_t start = (uint32_t)get_addresses_args.start_idx->dval[0];
+  uint32_t count = (uint32_t)get_addresses_args.count->dval[0];
+
+  for (uint32_t i = 0; i < start + count; i++) {
+    addr_with_version[0] = ADDRESS_VER_ED25519;
+    nerrors = wallet_address_by_index(cli_ctx.wallet, i, addr_with_version + 1);
+    if (nerrors != 0) {
+      printf("wallet_address_by_index error\n");
+      break;
+    } else {
+      if (address_2_bech32(addr_with_version, cli_ctx.wallet->bech32HRP, tmp_bech32_addr) == 0) {
+        printf("Addr[%" PRIu32 "]\n", i);
+        // print ed25519 address without version.
+        printf("\t");
+        dump_hex_str(addr_with_version + 1, ED25519_ADDRESS_BYTES);
+        printf("\t%s\n", tmp_bech32_addr);
+      }
+    }
+  }
   return CLI_OK;
 }
 
 static void register_get_addresses() {
-  get_addresses_args.start_idx = arg_str1(NULL, NULL, "<start>", "start index");
-  get_addresses_args.count = arg_str1(NULL, NULL, "<count>", "number of addresses");
+  get_addresses_args.start_idx = arg_dbl1(NULL, NULL, "<start>", "start index");
+  get_addresses_args.count = arg_dbl1(NULL, NULL, "<count>", "number of addresses");
   get_addresses_args.end = arg_end(2);
   cli_cmd_t cmd = {
       .command = "address",
-      .help = "Gets address by index",
+      .help = "Get addresses from an index",
       .hint = " <start> <count>",
       .func = &fn_get_addresses,
       .argtable = &get_addresses_args,
