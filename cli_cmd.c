@@ -875,6 +875,67 @@ static void dump_index_payload(payload_index_t *idx) {
   byte_buf_free(data_str);
 }
 
+static void dump_tx_payload(payload_tx_t *tx) {
+  char temp_addr[128] = {};
+  byte_t addr[IOTA_ADDRESS_BYTES] = {};
+  byte_t pub_key_bin[ED_PUBLIC_KEY_BYTES] = {};
+
+  // inputs
+  printf("Inputs:\n");
+  for (size_t i = 0; i < payload_tx_inputs_count(tx); i++) {
+    printf("\ttx ID[%zu]: %s\n\ttx output index[%zu]: %" PRIu32 "\n", i, payload_tx_inputs_tx_id(tx, i), i,
+           payload_tx_inputs_tx_output_index(tx, i));
+
+    // get input address from public key
+    if (hex_2_bin(payload_tx_blocks_public_key(tx, payload_tx_inputs_tx_output_index(tx, i) - 1),
+                  API_PUB_KEY_HEX_STR_LEN, pub_key_bin, ED_PUBLIC_KEY_BYTES) == 0) {
+      if (address_from_ed25519_pub(pub_key_bin, addr + 1) == 0) {
+        addr[0] = ADDRESS_VER_ED25519;
+        // address bin to bech32 hex string
+        if (address_2_bech32(addr, cli_ctx.wallet->bech32HRP, temp_addr) == 0) {
+          printf("\taddress[%zu]: %s\n", i, temp_addr);
+        } else {
+          printf("convert address to bech32 error\n");
+        }
+      } else {
+        printf("get address from public key error\n");
+      }
+    } else {
+      printf("convert pub key to binary failed\n");
+    }
+  }
+
+  // outputs
+  printf("Outputs:\n");
+  for (size_t i = 0; i < payload_tx_outputs_count(tx); i++) {
+    addr[0] = ADDRESS_VER_ED25519;
+    // address hex to bin
+    if (hex_2_bin(payload_tx_outputs_address(tx, i), IOTA_ADDRESS_HEX_BYTES + 1, addr + 1, ED25519_ADDRESS_BYTES) ==
+        0) {
+      // address bin to bech32
+      if (address_2_bech32(addr, cli_ctx.wallet->bech32HRP, temp_addr) == 0) {
+        printf("\tAddress[%zu]: %s\n\tAmount[%zu]: %" PRIu64 "\n", i, temp_addr, i, payload_tx_outputs_amount(tx, i));
+      } else {
+        printf("[%s:%d] converting bech32 address failed\n", __FILE__, __LINE__);
+      }
+    } else {
+      printf("[%s:%d] converting binary address failed\n", __FILE__, __LINE__);
+    }
+  }
+
+  // unlock blocks
+  printf("Unlock blocks:\n");
+  for (size_t i = 0; i < payload_tx_blocks_count(tx); i++) {
+    printf("\tPublic Key[%zu]: %s\n\tSignature[%zu]: %s\n", i, payload_tx_blocks_public_key(tx, i), i,
+           payload_tx_blocks_signature(tx, i));
+  }
+
+  // payload?
+  if (tx->payload != NULL && tx->type == MSG_PAYLOAD_INDEXATION) {
+    dump_index_payload((payload_index_t *)tx->payload);
+  }
+}
+
 static struct {
   struct arg_str *index;
   struct arg_str *data;
@@ -950,48 +1011,7 @@ static int fn_api_get_msg(int argc, char **argv) {
       if (msg->type == MSG_PAYLOAD_INDEXATION) {
         dump_index_payload((payload_index_t *)msg->payload);
       } else if (msg->type == MSG_PAYLOAD_TRANSACTION) {
-        // dump transaction message
-        payload_tx_t *tx = (payload_tx_t *)msg->payload;
-        char temp_addr[128] = {};
-        byte_t addr[IOTA_ADDRESS_BYTES] = {};
-
-        // inputs
-        printf("Inputs:\n");
-        for (size_t i = 0; i < payload_tx_inputs_count(tx); i++) {
-          printf("\ttx ID: %s\n\ttx output index: %" PRIu32 "\n", payload_tx_inputs_tx_id(tx, i),
-                 payload_tx_inputs_tx_output_index(tx, i));
-        }
-
-        // outputs
-        printf("Outputs:\n");
-        for (size_t i = 0; i < payload_tx_outputs_count(tx); i++) {
-          addr[0] = ADDRESS_VER_ED25519;
-          // address hex to bin
-          if (hex_2_bin(payload_tx_outputs_address(tx, i), IOTA_ADDRESS_HEX_BYTES + 1, addr + 1,
-                        ED25519_ADDRESS_BYTES) == 0) {
-            // address bin to bech32
-            if (address_2_bech32(addr, cli_ctx.wallet->bech32HRP, temp_addr) == 0) {
-              printf("\tAddress: %s\n\tED25519: %s\n\tAmount: %" PRIu64 "\n", payload_tx_outputs_address(tx, i),
-                     temp_addr, payload_tx_outputs_amount(tx, i));
-            } else {
-              printf("[%s:%d] converting bech32 address failed\n", __FILE__, __LINE__);
-            }
-          } else {
-            printf("[%s:%d] converting binary address failed\n", __FILE__, __LINE__);
-          }
-        }
-
-        // unlock blocks
-        printf("Unlock blocks:\n");
-        for (size_t i = 0; i < payload_tx_blocks_count(tx); i++) {
-          printf("\tPublic Key: %s\n\tSignature: %s\n", payload_tx_blocks_public_key(tx, i),
-                 payload_tx_blocks_signature(tx, i));
-        }
-
-        // payload?
-        if (tx->payload != NULL && tx->type == MSG_PAYLOAD_INDEXATION) {
-          dump_index_payload((payload_index_t *)tx->payload);
-        }
+        dump_tx_payload((payload_tx_t *)msg->payload);
       } else {
         printf("TODO: payload type: %d\n", msg->type);
       }
