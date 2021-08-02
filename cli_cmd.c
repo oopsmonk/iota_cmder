@@ -192,6 +192,7 @@ void to_uppercase(char *sPtr, int nchar) {
 
 //==========COMMANDS==========
 
+/* 'help' command */
 static cli_err_t fn_help(int argc, char **argv) {
   cli_cmd_t *cmd_p = NULL;
 
@@ -223,7 +224,7 @@ static void register_help() {
   utarray_push_back(cli_ctx.cmd_array, &cmd);
 }
 
-//==========NODE_INFO==========
+/* 'version' command */
 static cli_err_t fn_version(int argc, char **argv) {
   printf("TODO\n");
   return CLI_OK;
@@ -241,7 +242,7 @@ static void register_version() {
   utarray_push_back(cli_ctx.cmd_array, &cmd);
 }
 
-//==========NODE_INFO==========
+/* 'node_info' command */
 static cli_err_t fn_node_info(int argc, char **argv) {
   res_node_info_t *info = res_node_info_new();
   if (!info) {
@@ -285,7 +286,7 @@ static void register_node_info() {
   utarray_push_back(cli_ctx.cmd_array, &cmd);
 }
 
-//==========NODE_INFO_SET==========
+/* 'info_set' command */
 static struct {
   struct arg_str *host;
   struct arg_int *port;
@@ -331,7 +332,7 @@ static void register_node_set() {
   utarray_push_back(cli_ctx.cmd_array, &cmd);
 }
 
-//==========CLIENT_CONF==========
+/* 'node_conf' command */
 static cli_err_t fn_node_conf(int argc, char **argv) {
   printf("Host: %s:%d, TLS: %s\n", cli_ctx.wallet->endpoint.host, cli_ctx.wallet->endpoint.port,
          cli_ctx.wallet->endpoint.use_tls ? "true" : "false");
@@ -350,7 +351,7 @@ static void register_node_conf() {
   utarray_push_back(cli_ctx.cmd_array, &cmd);
 }
 
-//==========SEED==========
+/* 'seed' command */
 static cli_err_t fn_seed(int argc, char **argv) {
   dump_hex_str(cli_ctx.wallet->seed, IOTA_SEED_BYTES);
   return CLI_OK;
@@ -367,7 +368,7 @@ static void register_seed() {
   utarray_push_back(cli_ctx.cmd_array, &cmd);
 }
 
-//==========SEED_SET==========
+/* 'seed_set' command */
 static struct {
   struct arg_str *seed;
   struct arg_end *end;
@@ -413,7 +414,7 @@ static void register_seed_set() {
   utarray_push_back(cli_ctx.cmd_array, &cmd);
 }
 
-//==========GET_ADDRESSES==========
+/* 'address' command */
 static struct {
   struct arg_dbl *start_idx;
   struct arg_dbl *count;
@@ -464,7 +465,7 @@ static void register_get_addresses() {
   utarray_push_back(cli_ctx.cmd_array, &cmd);
 }
 
-//=====Find Message by Index=========
+/* 'api_msg_index' command */
 static struct {
   struct arg_str *index;
   struct arg_end *end;
