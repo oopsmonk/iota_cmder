@@ -414,57 +414,6 @@ static void register_seed_set() {
   utarray_push_back(cli_ctx.cmd_array, &cmd);
 }
 
-/* 'address' command */
-static struct {
-  struct arg_dbl *start_idx;
-  struct arg_dbl *count;
-  struct arg_end *end;
-} get_addresses_args;
-
-static cli_err_t fn_get_addresses(int argc, char **argv) {
-  byte_t addr_with_version[IOTA_ADDRESS_BYTES] = {};
-  char tmp_bech32_addr[100] = {};
-  int nerrors = arg_parse(argc, argv, (void **)&get_addresses_args);
-  if (nerrors != 0) {
-    arg_print_errors(stderr, get_addresses_args.end, argv[0]);
-    return -1;
-  }
-  uint32_t start = (uint32_t)get_addresses_args.start_idx->dval[0];
-  uint32_t count = (uint32_t)get_addresses_args.count->dval[0];
-
-  for (uint32_t i = start; i < start + count; i++) {
-    addr_with_version[0] = ADDRESS_VER_ED25519;
-    nerrors = wallet_address_by_index(cli_ctx.wallet, i, addr_with_version + 1);
-    if (nerrors != 0) {
-      printf("wallet_address_by_index error\n");
-      break;
-    } else {
-      if (address_2_bech32(addr_with_version, cli_ctx.wallet->bech32HRP, tmp_bech32_addr) == 0) {
-        printf("Addr[%" PRIu32 "]\n", i);
-        // print ed25519 address without version.
-        printf("\t");
-        dump_hex_str(addr_with_version + 1, ED25519_ADDRESS_BYTES);
-        printf("\t%s\n", tmp_bech32_addr);
-      }
-    }
-  }
-  return CLI_OK;
-}
-
-static void register_get_addresses() {
-  get_addresses_args.start_idx = arg_dbl1(NULL, NULL, "<start>", "start index");
-  get_addresses_args.count = arg_dbl1(NULL, NULL, "<count>", "number of addresses");
-  get_addresses_args.end = arg_end(2);
-  cli_cmd_t cmd = {
-      .command = "address",
-      .help = "Get addresses from an index",
-      .hint = " <start> <count>",
-      .func = &fn_get_addresses,
-      .argtable = &get_addresses_args,
-  };
-  utarray_push_back(cli_ctx.cmd_array, &cmd);
-}
-
 /* 'api_msg_index' command */
 static struct {
   struct arg_str *index;
@@ -937,6 +886,7 @@ static void dump_tx_payload(payload_tx_t *tx) {
   }
 }
 
+/* 'api_send_msg' command */
 static struct {
   struct arg_str *index;
   struct arg_str *data;
@@ -1039,6 +989,21 @@ static void register_api_get_msg() {
 }
 
 /* 'balance' command */
+static void dump_address(iota_wallet_t *w, uint32_t index) {
+  byte_t addr_wit_version[IOTA_ADDRESS_BYTES] = {};
+  char tmp_bech32_addr[100] = {};
+
+  addr_wit_version[0] = ADDRESS_VER_ED25519;
+  wallet_address_by_index(w, index, addr_wit_version + 1);
+  address_2_bech32(addr_wit_version, w->bech32HRP, tmp_bech32_addr);
+  printf("Addr[%" PRIu32 "]\n", index);
+  // print ed25519 address without version filed.
+  printf("\t");
+  dump_hex_str(addr_wit_version + 1, ED25519_ADDRESS_BYTES);
+  // print out
+  printf("\t%s\n", tmp_bech32_addr);
+}
+
 static struct {
   struct arg_dbl *idx_start;
   struct arg_dbl *idx_count;
@@ -1061,7 +1026,8 @@ static int fn_get_balance(int argc, char **argv) {
       printf("Err: get balance failed on index %u\n", i);
       return -2;
     }
-    printf("balance on address [%" PRIu32 "]: %" PRIu64 "i\n", i, balance);
+    dump_address(cli_ctx.wallet, i);
+    printf("balance: %" PRIu64 "\n", balance);
   }
   return 0;
 }
@@ -1076,6 +1042,44 @@ static void register_get_balance() {
       .hint = " <start> <count>",
       .func = &fn_get_balance,
       .argtable = &get_balance_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &cmd);
+}
+
+/* 'address' command */
+static struct {
+  struct arg_dbl *start_idx;
+  struct arg_dbl *count;
+  struct arg_end *end;
+} get_addresses_args;
+
+static cli_err_t fn_get_addresses(int argc, char **argv) {
+  byte_t addr_with_version[IOTA_ADDRESS_BYTES] = {};
+  char tmp_bech32_addr[100] = {};
+  int nerrors = arg_parse(argc, argv, (void **)&get_addresses_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, get_addresses_args.end, argv[0]);
+    return -1;
+  }
+  uint32_t start = (uint32_t)get_addresses_args.start_idx->dval[0];
+  uint32_t count = (uint32_t)get_addresses_args.count->dval[0];
+
+  for (uint32_t i = start; i < start + count; i++) {
+    dump_address(cli_ctx.wallet, i);
+  }
+  return CLI_OK;
+}
+
+static void register_get_addresses() {
+  get_addresses_args.start_idx = arg_dbl1(NULL, NULL, "<start>", "start index");
+  get_addresses_args.count = arg_dbl1(NULL, NULL, "<count>", "number of addresses");
+  get_addresses_args.end = arg_end(2);
+  cli_cmd_t cmd = {
+      .command = "address",
+      .help = "Get addresses from an index",
+      .hint = " <start> <count>",
+      .func = &fn_get_addresses,
+      .argtable = &get_addresses_args,
   };
   utarray_push_back(cli_ctx.cmd_array, &cmd);
 }
