@@ -2,6 +2,8 @@
 
 ![github actions](https://github.com/oopsmonk/iota_cmder/actions/workflows/push_build.yml/badge.svg)
 
+**This application is for development, DO NOT USE IN PRODUCTION!!**
+
 A terminal-based application for interacting with the Tangle through [iota.c](https://github.com/iotaledger/iota.c). It is designed to run on PCs and embedded devices that POSIX compliant.  
 
 ## Commands  
@@ -33,15 +35,31 @@ A terminal-based application for interacting with the Tangle through [iota.c](ht
 * `address`: Display addresses from an index.
 * `balance`: Display balance from an index.
 * `send`: Send a value transaction to the Tangle.
+* `mnemonic_gen`: Generate a random mnemonic sentence
+* `mnemonic_update`: Update wallet mnemonic
 
 ## How to Use  
 
+iota.c support `openssl`, `mbedtls`, `libsodium` crypto libraries, user can use `CryptoUse` to change the default `openssl` library.
+
 ### CMake  
+
+Building the application with mbedtls
 
 ```bash
 git clone https://github.com/oopsmonk/iota_cmder.git
 cd iota_cmder
 mkdir build && cd build
-cmake -DCMAKE_INSTALL_PREFIX=$PWD ..
+cmake -DCMAKE_INSTALL_PREFIX=$PWD -DCryptoUse:STRING=mbedtls ..
+make -j8 && ./iota_cmder
+```
+
+Building the application with libsodium
+
+```bash
+git clone https://github.com/oopsmonk/iota_cmder.git
+cd iota_cmder
+mkdir build && cd build
+cmake -DCMAKE_INSTALL_PREFIX=$PWD -DCryptoUse:STRING=libsodium ..
 make -j8 && ./iota_cmder
 ```

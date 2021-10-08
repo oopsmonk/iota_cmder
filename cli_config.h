@@ -11,15 +11,14 @@
 
 // #define CLIENT_CONFIG_MAINNET
 
-#define WALLET_CONFIG_SEED "RANDOM" // RANDOM or a string with 64 characters
-#define WALLET_CONFIG_PATH "m/44'/4218'/0'/0'"
+#define WALLET_CONFIG_MNEMONIC "RANDOM"  // RANDOM or a mnemonic sentence
 
 #ifdef CLIENT_CONFIG_MAINNET
 #define CLIENT_CONFIG_NODE "chrysalis-nodes.iota.org"
 #define CLIENT_CONFIG_PORT 443
 #define NODE_USE_TLS 1
-#else  // testnet
-#define CLIENT_CONFIG_NODE "api.lb-0.testnet.chrysalis2.com"
+#else  // chrysalis devnet
+#define CLIENT_CONFIG_NODE "api.lb-0.h.chrysalis-devnet.iota.cafe"
 #define CLIENT_CONFIG_PORT 443
 #define NODE_USE_TLS 1
 #endif

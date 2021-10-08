@@ -20,6 +20,7 @@
 #include "client/api/v1/get_tips.h"
 #include "client/api/v1/send_message.h"
 #include "core/utils/byte_buffer.h"
+#include "wallet/bip39.h"
 #include "wallet/wallet.h"
 
 #define CMDER_VERSION_MAJOR 0
@@ -93,27 +94,18 @@ static int update_node_config(iota_wallet_t *w, char const host[], uint32_t port
 }
 
 static cli_err_t cli_wallet_init() {
-  byte_t seed[IOTA_SEED_BYTES] = {};
+  // mnemonic sentence buffer
+  char ms_buf[256] = {};
   printf("Init client application...\n");
 
-  if (strncmp(WALLET_CONFIG_SEED, "RANDOM", strlen("RANDOM")) == 0) {
-    printf("using a random SEED\n");
-    random_seed(seed);
-  } else {
-    size_t str_seed_len = strlen(WALLET_CONFIG_SEED);
-    // TODO get seed from terminal if the seed is invalid.
-    if (str_seed_len != 64) {
-      printf("invalid seed length, it should be a 64-character-string\n");
-      return CLI_ERR_FAILED;
-    }
-
-    if (hex_2_bin(WALLET_CONFIG_SEED, str_seed_len, seed, sizeof(seed)) != 0) {
-      printf("invalid seed\n");
-      return CLI_ERR_FAILED;
-    }
+  if (strncmp(WALLET_CONFIG_MNEMONIC, "RANDOM", strlen("RANDOM")) == 0) {
+    printf("generating new mnemonic sentence\n");
+    mnemonic_generator(MS_ENTROPY_256, MS_LAN_EN, ms_buf, sizeof(ms_buf));
+    printf("###\n%s\n###\n", ms_buf);
   }
 
-  if ((cli_ctx.wallet = wallet_create(seed, WALLET_CONFIG_PATH)) == NULL) {
+  // init wallet instance with mnemonic and pwd
+  if ((cli_ctx.wallet = wallet_create(ms_buf, "", 0)) == NULL) {
     printf("create wallet instance failed\n");
     return CLI_ERR_FAILED;
   }
@@ -989,17 +981,17 @@ static void register_api_get_msg() {
 }
 
 /* 'balance' command */
-static void dump_address(iota_wallet_t *w, uint32_t index) {
-  byte_t addr_wit_version[IOTA_ADDRESS_BYTES] = {};
-  char tmp_bech32_addr[100] = {};
+static void dump_address(iota_wallet_t *w, uint32_t index, bool is_change) {
+  char tmp_bech32_addr[65];
+  byte_t tmp_addr[ED25519_ADDRESS_BYTES];
 
-  addr_wit_version[0] = ADDRESS_VER_ED25519;
-  wallet_address_by_index(w, index, addr_wit_version + 1);
-  address_2_bech32(addr_wit_version, w->bech32HRP, tmp_bech32_addr);
+  wallet_bech32_from_index(w, is_change, index, tmp_bech32_addr);
+  wallet_address_from_index(w, is_change, index, tmp_addr);
+
   printf("Addr[%" PRIu32 "]\n", index);
   // print ed25519 address without version filed.
   printf("\t");
-  dump_hex_str(addr_wit_version + 1, ED25519_ADDRESS_BYTES);
+  dump_hex_str(tmp_addr, ED25519_ADDRESS_BYTES);
   // print out
   printf("\t%s\n", tmp_bech32_addr);
 }
@@ -1007,6 +999,7 @@ static void dump_address(iota_wallet_t *w, uint32_t index) {
 static struct {
   struct arg_dbl *idx_start;
   struct arg_dbl *idx_count;
+  struct arg_int *is_change;
   struct arg_end *end;
 } get_balance_args;
 
@@ -1020,13 +1013,14 @@ static int fn_get_balance(int argc, char **argv) {
 
   uint32_t start = get_balance_args.idx_start->dval[0];
   uint32_t count = get_balance_args.idx_count->dval[0];
+  bool is_change = get_balance_args.is_change->ival[0];
 
   for (uint32_t i = start; i < start + count; i++) {
-    if (wallet_balance_by_index(cli_ctx.wallet, i, &balance) != 0) {
+    if (wallet_balance_by_index(cli_ctx.wallet, is_change, i, &balance) != 0) {
       printf("Err: get balance failed on index %u\n", i);
       return -2;
     }
-    dump_address(cli_ctx.wallet, i);
+    dump_address(cli_ctx.wallet, i, is_change);
     printf("balance: %" PRIu64 "\n", balance);
   }
   return 0;
@@ -1035,11 +1029,12 @@ static int fn_get_balance(int argc, char **argv) {
 static void register_get_balance() {
   get_balance_args.idx_start = arg_dbl1(NULL, NULL, "<start>", "start index");
   get_balance_args.idx_count = arg_dbl1(NULL, NULL, "<count>", "number of address");
-  get_balance_args.end = arg_end(2);
+  get_balance_args.is_change = arg_int1(NULL, NULL, "<is_change>", "0 or 1");
+  get_balance_args.end = arg_end(5);
   cli_cmd_t cmd = {
       .command = "balance",
       .help = "Get the balance from a range of address index",
-      .hint = " <start> <count>",
+      .hint = " <start> <count> <is_change>",
       .func = &fn_get_balance,
       .argtable = &get_balance_args,
   };
@@ -1050,6 +1045,7 @@ static void register_get_balance() {
 static struct {
   struct arg_dbl *start_idx;
   struct arg_dbl *count;
+  struct arg_int *is_change;
   struct arg_end *end;
 } get_addresses_args;
 
@@ -1063,9 +1059,11 @@ static cli_err_t fn_get_addresses(int argc, char **argv) {
   }
   uint32_t start = (uint32_t)get_addresses_args.start_idx->dval[0];
   uint32_t count = (uint32_t)get_addresses_args.count->dval[0];
+  bool is_change = get_addresses_args.is_change->ival[0];
 
+  printf("list addresses with change %d\n", is_change);
   for (uint32_t i = start; i < start + count; i++) {
-    dump_address(cli_ctx.wallet, i);
+    dump_address(cli_ctx.wallet, i, is_change);
   }
   return CLI_OK;
 }
@@ -1073,11 +1071,12 @@ static cli_err_t fn_get_addresses(int argc, char **argv) {
 static void register_get_addresses() {
   get_addresses_args.start_idx = arg_dbl1(NULL, NULL, "<start>", "start index");
   get_addresses_args.count = arg_dbl1(NULL, NULL, "<count>", "number of addresses");
-  get_addresses_args.end = arg_end(2);
+  get_addresses_args.is_change = arg_int1(NULL, NULL, "<is_change>", "0 or 1");
+  get_addresses_args.end = arg_end(5);
   cli_cmd_t cmd = {
       .command = "address",
       .help = "Get addresses from an index",
-      .hint = " <start> <count>",
+      .hint = " <start> <count> <is_change>",
       .func = &fn_get_addresses,
       .argtable = &get_addresses_args,
   };
@@ -1094,7 +1093,7 @@ static struct {
 
 static int fn_send_msg(int argc, char **argv) {
   char msg_id[IOTA_MESSAGE_ID_HEX_BYTES + 1] = {};
-  char data[] = "sent from iota_comder";
+  char data[] = "sent from iota_cmder";
   int nerrors = arg_parse(argc, argv, (void **)&send_msg_args);
   byte_t recv[IOTA_ADDRESS_BYTES] = {};
   if (nerrors != 0) {
@@ -1131,8 +1130,8 @@ static int fn_send_msg(int argc, char **argv) {
     printf("send indexation payload to tangle\n");
   }
 
-  nerrors = wallet_send(cli_ctx.wallet, (uint32_t)send_msg_args.sender->dval[0], recv + 1, balance, "iota_comder",
-                        (byte_t *)data, sizeof(data), msg_id, sizeof(msg_id));
+  nerrors = wallet_send(cli_ctx.wallet, false, (uint32_t)send_msg_args.sender->dval[0], recv + 1, balance,
+                        "iota_comder", (byte_t *)data, sizeof(data), msg_id, sizeof(msg_id));
   if (nerrors) {
     printf("send message failed\n");
     return -5;
@@ -1152,6 +1151,90 @@ static void register_send_tokens() {
       .hint = " <addr_index> <receiver> <balance>",
       .func = &fn_send_msg,
       .argtable = &send_msg_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &cmd);
+}
+
+/* 'mnemonic_gen' command */
+static struct {
+  struct arg_int *language_id;
+  struct arg_end *end;
+} mnemonic_gen_args;
+
+static cli_err_t fn_mnemonic_gen(int argc, char **argv) {
+  char buf[512] = {};
+
+  int nerrors = arg_parse(argc, argv, (void **)&mnemonic_gen_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, mnemonic_gen_args.end, argv[0]);
+    return CLI_ERR_CMD_PARSING;
+  }
+
+  int lan_id = mnemonic_gen_args.language_id->ival[0];
+  // validate id
+  if (lan_id < MS_LAN_EN || lan_id > MS_LAN_PT) {
+    printf("invalid language id, id value is %d to %d\n", MS_LAN_EN, MS_LAN_PT);
+    return CLI_ERR_INVALID_ARG;
+  }
+
+  mnemonic_generator(MS_ENTROPY_256, lan_id, buf, sizeof(buf));
+  printf("%s\n", buf);
+  return CLI_OK;
+}
+
+static void register_mnemonic_gen() {
+  mnemonic_gen_args.language_id = arg_int1(NULL, NULL, "<language id>", "0 to 8");
+  mnemonic_gen_args.end = arg_end(2);
+  cli_cmd_t cmd = {
+      .command = "mnemonic_gen",
+      .help = "generate a random mnemonic sentence",
+      .hint = " <language id>",
+      .func = &fn_mnemonic_gen,
+      .argtable = &mnemonic_gen_args,
+  };
+  utarray_push_back(cli_ctx.cmd_array, &cmd);
+}
+
+/* 'mnemonic_update' command */
+
+static struct {
+  struct arg_str *ms;
+  struct arg_end *end;
+} ms_update_args;
+
+static cli_err_t fn_mnemonic_update(int argc, char **argv) {
+  byte_t new_seed[64] = {};
+
+  int nerrors = arg_parse(argc, argv, (void **)&ms_update_args);
+  if (nerrors != 0) {
+    arg_print_errors(stderr, ms_update_args.end, argv[0]);
+    return -1;
+  }
+
+  char const *const ms = ms_update_args.ms->sval[0];
+
+  if (mnemonic_to_seed(ms, "", new_seed, sizeof(new_seed)) == 0) {
+    // dump_hex_str(new_seed, sizeof(new_seed));
+    // replace seed
+    memcpy(cli_ctx.wallet->seed, new_seed, IOTA_SEED_BYTES);
+    printf("mnemonic is changed to\n%s\n", ms);
+    return CLI_OK;
+  }
+
+  printf("Update mnemonic seed failed..\n");
+
+  return -1;
+}
+
+static void register_mnemonic_update() {
+  ms_update_args.ms = arg_str1(NULL, NULL, "<mnemonic>", "Mnemonic sentence");
+  ms_update_args.end = arg_end(2);
+  cli_cmd_t cmd = {
+      .command = "mnemonic_update",
+      .help = "Replace current mnemonic",
+      .hint = " <mnemonic>",
+      .func = &fn_mnemonic_update,
+      .argtable = &ms_update_args,
   };
   utarray_push_back(cli_ctx.cmd_array, &cmd);
 }
@@ -1197,6 +1280,8 @@ cli_err_t cli_command_init() {
   register_get_addresses();
   register_get_balance();
   register_send_tokens();
+  register_mnemonic_gen();
+  register_mnemonic_update();
 
   return cli_wallet_init();
 }
