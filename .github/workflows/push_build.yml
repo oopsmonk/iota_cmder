@@ -41,6 +41,6 @@ jobs:
     - name: CMake Build
       run: |
         mkdir build && cd build
-        cmake -DCMAKE_INSTALL_PREFIX=$PWD -DIOTA_TESTS=ON -DUSE_REF_CRYPTO=ON ..
+        cmake -DCMAKE_INSTALL_PREFIX=$PWD -DIOTA_TESTS=ON -DIOTA_WALLET_ENABLE=ON ..
         make -j8
         make test
