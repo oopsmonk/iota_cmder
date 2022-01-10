@@ -102,12 +102,17 @@ static cli_err_t cli_wallet_init() {
     printf("generating new mnemonic sentence\n");
     mnemonic_generator(MS_ENTROPY_256, MS_LAN_EN, ms_buf, sizeof(ms_buf));
     printf("###\n%s\n###\n", ms_buf);
-  }
-
-  // init wallet instance with mnemonic and pwd
-  if ((cli_ctx.wallet = wallet_create(ms_buf, "", 0)) == NULL) {
-    printf("create wallet instance failed\n");
-    return CLI_ERR_FAILED;
+    // init wallet instance with random mnemonic
+    if ((cli_ctx.wallet = wallet_create(ms_buf, "", 0)) == NULL) {
+      printf("create wallet instance failed\n");
+      return CLI_ERR_FAILED;
+    }
+  } else {
+    // init wallet instance with default mnemonic
+    if ((cli_ctx.wallet = wallet_create(WALLET_CONFIG_MNEMONIC, "", 0)) == NULL) {
+      printf("create wallet instance failed\n");
+      return CLI_ERR_FAILED;
+    }
   }
 
   if (update_node_config(cli_ctx.wallet, CLIENT_CONFIG_NODE, CLIENT_CONFIG_PORT, NODE_USE_TLS) != 0) {
